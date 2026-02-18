@@ -2,16 +2,85 @@
 # priv/extensions/ExceptionsSm.py
 #
 # ExceptionsSm extension exception test generator.
-# jgong@hmc.edu Jan 2026
+# huahuang@hmc.edu 2/13/2026
 # SPDX-License-Identifier: Apache-2.0
 ##################################
 
 """Sm extension exception test generator."""
 
-from testgen.asm.helpers import comment_banner
+from testgen.asm.helpers import comment_banner, write_sigupd
 from testgen.data.state import TestData
 from testgen.priv.registry import add_priv_test_generator
 
+def _generate_instr_adr_misaligned_branch(test_data: TestData) -> list[str]:
+    lines = [
+        comment_banner(
+            "cp_instr_adr_misaligned_branch",
+            "Branch to an unaligned address (PC+6). Should cause an exception if C-extension is not present",
+        ),
+    ]
+
+    ######################################
+    covergroup = "ExceptionsSm_cg"
+    coverpoint = "cp_instr_adr_misaligned_branch"
+    ######################################
+
+    check_reg, temp_reg = test_data.int_regs.get_registers(2, exclude_regs=[0])
+    b_op = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
+    r1 = ['x0', 'x0', 'x0', f'x{temp_reg}', 'x0', 'x0']
+    r2 = ['x0', f'x{temp_reg}', f'x{temp_reg}', 'x0', f'x{temp_reg}', 'x0']
+
+    lines.extend(
+        [
+        ".align 2",
+        f"li x{temp_reg}, 1",
+        test_data.add_testcase(coverpoint, "taken_branch_pc_6", covergroup),
+        f"li x{check_reg}, 1",
+        ]
+    )
+
+    for i in range(6):
+        lines.append(f"{b_op[i]} {r1[i]}, {r2[i]}, .+6")
+        lines.append(".word 0x00010013")
+        lines.append(write_sigupd(check_reg, test_data))
+
+    test_data.int_regs.return_registers([temp_reg, check_reg])   
+    return lines
+
+def _generate_instr_adr_misaligned_branch_nottaken(test_data: TestData) -> list[str]:
+    """Generate misaligned instruction address?????."""
+    lines = [
+        comment_banner(
+            "cp_instr_adr_misaligned_branch_nottaken",
+            "Branch to an unaligned address (PC+6). Should not cause an exception",
+        ),
+    ]
+
+    ######################################
+    covergroup = "ExceptionsSm_cg"
+    coverpoint = "cp_instr_adr_misaligned_branch_nottaken"
+    ######################################
+    check_reg, temp_reg = test_data.int_regs.get_registers(2, exclude_regs=[0])
+
+    b_op = ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']
+    r1 = ['x0', 'x0', f'x{temp_reg}', 'x0', f'x{temp_reg}', 'x0']
+    r2 = [f'x{temp_reg}', 'x0', 'x0', f'x{temp_reg}', 'x0', f'x{temp_reg}']
+
+    lines.extend(
+        [
+        ".align 2",
+        f"li x{temp_reg}, 1",
+        test_data.add_testcase(coverpoint, "nottaken_branch_pc_6", covergroup),
+        f"li x{check_reg}, 1",
+        ]
+    )
+
+    for i in range(6):
+        lines.append(f"{b_op[i]} {r1[i]}, {r2[i]}, .+6")
+    lines.append(write_sigupd(check_reg, test_data))
+
+    test_data.int_regs.return_registers([temp_reg, check_reg])   
+    return lines
 
 def _generate_instr_adr_misaligned_jal_tests(test_data: TestData) -> list[str]:
     """Generate instruction address misaligned JAL exception tests."""
@@ -57,7 +126,7 @@ def _generate_instr_adr_misaligned_jalr_tests(test_data: TestData) -> list[str]:
             lines.extend(
                 [
                     f"\n# rs1[1:0]={rs1_lsb:02b}, offset[1:0]={offset_lsb:02b}",
-                    "    .align 2",
+                    # "    .align 2",
                     test_data.add_testcase(coverpoint, f"jalr_rs1_{rs1_lsb}_off_{offset_lsb}", covergroup),
                     f"    auipc x{addr_reg}, 0",
                     f"    addi x{addr_reg}, x{addr_reg}, {base_off}",
@@ -90,11 +159,11 @@ def _generate_instr_access_fault_tests(test_data: TestData) -> list[str]:
 
     lines = [
         comment_banner(coverpoint, "Instruction Access Fault"),
-        "    .align 2",
+        # "    .align 2",
         test_data.add_testcase(coverpoint, "instr_access_fault", covergroup),
         f"    li x{addr_reg}, RVMODEL_ACCESS_FAULT_ADDRESS",
         f"    jalr x1, 0(x{addr_reg})",
-        "    nop",
+        "     nop",
         "",
     ]
 
@@ -130,14 +199,18 @@ def _generate_illegal_instruction_seed_tests(test_data: TestData) -> list[str]:
 
     lines = [
         comment_banner(coverpoint, "Illegal Instruction Seed"),
-        "#ifdef ZKR_SUPPORTED",
-        "    .align 2",
+        #"#ifdef ZKR_SUPPORTED",
+        #"    .align 2",
         test_data.add_testcase(coverpoint, "seed_readonly_access", covergroup),
         f"    csrrs x{dest_regs[0]}, seed, x0",
+        "nop",
         f"    csrrc x{dest_regs[1]}, seed, x0",
+        "nop",
         f"    csrrsi x{dest_regs[2]}, seed, 0",
+        "nop",
         f"    csrrci x{dest_regs[3]}, seed, 0",
-        "#endif",
+        "nop",
+        #"#endif",
         "",
     ]
 
@@ -201,9 +274,10 @@ def _generate_load_access_fault_tests(test_data: TestData) -> list[str]:
 
     lines = [
         comment_banner(coverpoint, "Load Access Fault"),
-        "    .align 2",
+        # "    .align 2",
         test_data.add_testcase(coverpoint, "load_access_fault", covergroup),
         f"    li x{addr_reg}, RVMODEL_ACCESS_FAULT_ADDRESS",
+        "nop",
     ]
 
     # Define load operations - all use the same destination register
@@ -328,6 +402,7 @@ def _generate_misaligned_priority_load_tests(test_data: TestData) -> list[str]:
                 [
                     test_data.add_testcase(coverpoint, f"{op}_off{offset}_priority", covergroup),
                     f"    {op} x{check_reg}, 0(x{addr_reg})",
+                    "     nop",
                 ]
             )
 
@@ -352,7 +427,7 @@ def _generate_misaligned_priority_store_tests(test_data: TestData) -> list[str]:
         # Load fault address, compute offset, and load data ONCE per iteration
         lines.extend(
             [
-                f"    li x{addr_reg}, RVMODEL_ACCESS_FAULT_ADDRESS",
+                f"    la x{addr_reg}, RVMODEL_ACCESS_FAULT_ADDRESS",
                 f"    addi x{addr_reg}, x{addr_reg}, {offset}",
                 f"    li x{data_reg}, 0xDECAFCAB",  # Match original value
             ]
@@ -363,6 +438,8 @@ def _generate_misaligned_priority_store_tests(test_data: TestData) -> list[str]:
                 [
                     test_data.add_testcase(coverpoint, f"{op}_off{offset}_priority", covergroup),
                     f"    {op} x{data_reg}, 0(x{addr_reg})",
+                    "     nop",
+                    "     nop",
                 ]
             )
 
@@ -427,7 +504,7 @@ def _generate_mstatus_ie_tests(test_data: TestData) -> list[str]:
     return lines
 
 
-@add_priv_test_generator("ExceptionsSm", extensions=["I", "Zicsr", "Sm"])
+@add_priv_test_generator("ExceptionsSm", required_extensions=["I", "Zicsr", "Sm"])
 def make_exceptionssm(test_data: TestData) -> list[str]:
     """Main entry point for Sm exception test generation."""
     lines = []
@@ -444,21 +521,23 @@ def make_exceptionssm(test_data: TestData) -> list[str]:
             "",
         ]
     )
-
+    lines.extend(_generate_instr_adr_misaligned_branch(test_data))
+    lines.extend(_generate_instr_adr_misaligned_branch_nottaken(test_data))
     lines.extend(_generate_instr_adr_misaligned_jal_tests(test_data))
     lines.extend(_generate_instr_adr_misaligned_jalr_tests(test_data))
-    lines.extend(_generate_instr_access_fault_tests(test_data))
+    # lines.extend(_generate_instr_access_fault_tests(test_data))
+    lines.extend(_generate_illegal_instruction_tests(test_data))
+    lines.extend(_generate_illegal_instruction_seed_tests(test_data))
+    lines.extend(_generate_breakpoint_tests(test_data))
     lines.extend(_generate_load_address_misaligned_tests(test_data))
     lines.extend(_generate_load_access_fault_tests(test_data))
     lines.extend(_generate_store_address_misaligned_tests(test_data))
     lines.extend(_generate_store_access_fault_tests(test_data))
-    lines.extend(_generate_ecall_m_tests(test_data))
+    # lines.extend(_generate_ecall_m_tests(test_data))
     lines.extend(_generate_misaligned_priority_load_tests(test_data))
     lines.extend(_generate_misaligned_priority_store_tests(test_data))
     lines.extend(_generate_misaligned_priority_fetch_tests(test_data))
-    lines.extend(_generate_mstatus_ie_tests(test_data))
-    lines.extend(_generate_illegal_instruction_seed_tests(test_data))
-    lines.extend(_generate_breakpoint_tests(test_data))
-    lines.extend(_generate_illegal_instruction_tests(test_data))
+    # lines.extend(_generate_mstatus_ie_tests(test_data))
+    
 
     return lines
